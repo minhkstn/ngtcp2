@@ -255,6 +255,10 @@ public:
 
   void write_qlog(const void *data, size_t datalen);
 
+// MINH 18.02.20 [implement ABR] ADD-S
+  void minh_req_rate(int m_bitrate, int m_seg_idx);
+// MINH 18.02.20 [implement ABR] ADD-E  
+
 private:
   Address local_addr_;
   Address remote_addr_;
@@ -293,6 +297,7 @@ private:
   // should_exit_ is true if client should exit rather than waiting
   // for timeout.
   bool should_exit_;
+
 };
 
 #endif // CLIENT_H

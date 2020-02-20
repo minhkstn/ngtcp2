@@ -128,10 +128,13 @@ void ngtcp2_default_cc_on_ack_recv(ngtcp2_default_cc *cc,
     uint64_t target_cwnd =
         (uint64_t)(2.89 * cc->max_delivery_rate * (double)cc->min_rtt);
     cc->target_cwnd = ngtcp2_max(NGTCP2_MIN_CWND, target_cwnd);
-
+// MINH 20.02.20 [screen log] DEL-S
+#if 0    
     ngtcp2_log_info(cc->log, NGTCP2_LOG_EVENT_RCV,
                     "target_cwnd=%lu max_delivery_rate=%.02f min_rtt=%lu",
                     cc->target_cwnd, cc->max_delivery_rate * 1000000000,
                     cc->min_rtt);
+#endif    
+// MINH 20.02.20 [screen log] DEL-E    
   }
 }

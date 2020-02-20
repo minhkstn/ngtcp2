@@ -1950,8 +1950,10 @@ int Handler::recv_stream_data(int64_t stream_id, uint8_t fin,
     return 0;
   }
 
+  std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << __LINE__ << std::endl;
   auto nconsumed =
       nghttp3_conn_read_stream(httpconn_, stream_id, data, datalen, fin);
+  std::cout << "\tnconsumed: " << nconsumed << std::endl;
   if (nconsumed < 0) {
     std::cerr << "nghttp3_conn_read_stream: " << nghttp3_strerror(nconsumed)
               << std::endl;

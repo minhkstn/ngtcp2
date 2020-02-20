@@ -200,6 +200,8 @@ static uint64_t timestamp_cast(uint64_t ns) { return ns / NGTCP2_MILLISECONDS; }
 
 static void log_fr_stream(ngtcp2_log *log, const ngtcp2_pkt_hd *hd,
                           const ngtcp2_stream *fr, const char *dir) {
+// MINH 20.02.20 [screen log] DEL-S
+#if 0  
   log->log_printf(
       log->user_data,
       (NGTCP2_LOG_PKT " STREAM(0x%02x) id=0x%" PRIx64 " fin=%d offset=%" PRIu64
@@ -207,6 +209,8 @@ static void log_fr_stream(ngtcp2_log *log, const ngtcp2_pkt_hd *hd,
       NGTCP2_LOG_FRM_HD_FIELDS(dir), fr->type | fr->flags, fr->stream_id,
       fr->fin, fr->offset, ngtcp2_vec_len(fr->data, fr->datacnt),
       (fr->stream_id & 0x2) != 0);
+#endif
+// MINH 20.02.20 [screen log] DEL-E      
 }
 
 static void log_fr_ack(ngtcp2_log *log, const ngtcp2_pkt_hd *hd,
@@ -214,6 +218,8 @@ static void log_fr_ack(ngtcp2_log *log, const ngtcp2_pkt_hd *hd,
   int64_t largest_ack, min_ack;
   size_t i;
 
+// MINH 20.02.20 [screen log] DEL -S
+#if 0
   log->log_printf(log->user_data,
                   (NGTCP2_LOG_PKT " ACK(0x%02x) largest_ack=%" PRId64
                                   " ack_delay=%" PRIu64 "(%" PRIu64
@@ -221,25 +227,35 @@ static void log_fr_ack(ngtcp2_log *log, const ngtcp2_pkt_hd *hd,
                   NGTCP2_LOG_FRM_HD_FIELDS(dir), fr->type, fr->largest_ack,
                   fr->ack_delay_unscaled / NGTCP2_MILLISECONDS, fr->ack_delay,
                   fr->num_blks);
+#endif
+// MINH 20.02.20 [screen log] DEL -E
 
   largest_ack = fr->largest_ack;
   min_ack = fr->largest_ack - (int64_t)fr->first_ack_blklen;
 
+// MINH 20.02.20 [screen log] DEL -S
+#if 0  
   log->log_printf(log->user_data,
                   (NGTCP2_LOG_PKT " ACK(0x%02x) block=[%" PRId64 "..%" PRId64
                                   "] block_count=%" PRIu64),
                   NGTCP2_LOG_FRM_HD_FIELDS(dir), fr->type, largest_ack, min_ack,
                   fr->first_ack_blklen);
+#endif
+// MINH 20.02.20 [screen log] DEL -E   
 
   for (i = 0; i < fr->num_blks; ++i) {
     const ngtcp2_ack_blk *blk = &fr->blks[i];
     largest_ack = min_ack - (int64_t)blk->gap - 2;
     min_ack = largest_ack - (int64_t)blk->blklen;
+// MINH 20.02.20 [screen log] DEL-S
+#if 0    
     log->log_printf(log->user_data,
                     (NGTCP2_LOG_PKT " ACK(0x%02x) block=[%" PRId64 "..%" PRId64
                                     "] gap=%" PRIu64 " block_count=%" PRIu64),
                     NGTCP2_LOG_FRM_HD_FIELDS(dir), fr->type, largest_ack,
                     min_ack, blk->gap, blk->blklen);
+#endif
+// MINH 20.02.20 [screen log] DEL -E                    
   }
 }
 
@@ -281,26 +297,39 @@ static void log_fr_connection_close(ngtcp2_log *log, const ngtcp2_pkt_hd *hd,
 
 static void log_fr_max_data(ngtcp2_log *log, const ngtcp2_pkt_hd *hd,
                             const ngtcp2_max_data *fr, const char *dir) {
+// MINH 20.02.20 [screen log] DEL-S
+#if 0  
   log->log_printf(log->user_data,
                   (NGTCP2_LOG_PKT " MAX_DATA(0x%02x) max_data=%" PRIu64),
                   NGTCP2_LOG_FRM_HD_FIELDS(dir), fr->type, fr->max_data);
+#endif
+// MINH 20.02.20 [screen log] DEL-S
+
 }
 
 static void log_fr_max_stream_data(ngtcp2_log *log, const ngtcp2_pkt_hd *hd,
                                    const ngtcp2_max_stream_data *fr,
                                    const char *dir) {
+// MINH 20.02.20 [screen log] DEL-S
+#if 0   
   log->log_printf(log->user_data,
                   (NGTCP2_LOG_PKT " MAX_STREAM_DATA(0x%02x) id=0x%" PRIx64
                                   " max_stream_data=%" PRIu64),
                   NGTCP2_LOG_FRM_HD_FIELDS(dir), fr->type, fr->stream_id,
                   fr->max_stream_data);
+#endif
+// MINH 20.02.20 [screen log] DEL-S  
 }
 
 static void log_fr_max_streams(ngtcp2_log *log, const ngtcp2_pkt_hd *hd,
                                const ngtcp2_max_streams *fr, const char *dir) {
+// MINH 20.02.20 [screen log] DEL-S
+#if 0   
   log->log_printf(log->user_data,
                   (NGTCP2_LOG_PKT " MAX_STREAMS(0x%02x) max_streams=%" PRIu64),
                   NGTCP2_LOG_FRM_HD_FIELDS(dir), fr->type, fr->max_streams);
+#endif
+// MINH 20.02.20 [screen log] DEL-S                  
 }
 
 static void log_fr_ping(ngtcp2_log *log, const ngtcp2_pkt_hd *hd,
@@ -681,6 +710,8 @@ static void log_pkt_hd(ngtcp2_log *log, const ngtcp2_pkt_hd *hd,
     return;
   }
 
+// MINH 20.02.20 [screen log] DEL-S
+#if 0
   ngtcp2_log_info(
       log, NGTCP2_LOG_EVENT_PKT,
       "%s pkn=%" PRId64 " dcid=0x%s scid=0x%s type=%s(0x%02x) len=%zu k=%d",
@@ -690,6 +721,8 @@ static void log_pkt_hd(ngtcp2_log *log, const ngtcp2_pkt_hd *hd,
       (hd->flags & NGTCP2_PKT_FLAG_LONG_FORM) ? strpkttype_long(hd->type)
                                               : "Short",
       hd->type, hd->len, (hd->flags & NGTCP2_PKT_FLAG_KEY_PHASE) != 0);
+#endif  
+// MINH 20.02.20 [screen log] DEL-E
 }
 
 void ngtcp2_log_rx_pkt_hd(ngtcp2_log *log, const ngtcp2_pkt_hd *hd) {

@@ -44,6 +44,8 @@
 
 #include <http-parser/http_parser.h>
 
+#include <chrono>
+
 #include "client.h"
 #include "network.h"
 #include "debug.h"
@@ -75,8 +77,34 @@ Stream::~Stream() {
     close(fd);
   }
 }
+// -------------------------------------------------------------------------
+// BBB video, SD = 1s
+std::vector<int> minh_rate_set_1s = {47, 92, 135, 182, 226, 270, 353, 425, 538, 621, 808, 1100, 1300, 1700, 2200, 2600, 3300, 3800, 4200, 4700}; // BBB video, SD = 1s
 
+int minh_seg_idx = 1;
+
+// Minh: for clocks
+auto minh_req_sent = std::chrono::high_resolution_clock::now();;
+int  minh_download_time = 0;
+
+// Minh: for parameters
+const int minh_sd = 1000; //ms
+const int minh_MAX_SEGMENT = 596000/minh_sd + 1;
+
+double  minh_last_thrp = 0;
+double  minh_buffer = 0;
+
+int     minh_seg_length = 0; // in Bytes
+
+std::vector<double> minh_thrp_recorder;
+std::vector<double> minh_buffer_recorder;
+std::vector<int>    minh_bitrate_recorder;
+
+// Minh: for ABR
+enum ABR {AGG, SARA, BBA};
+// -------------------------------------------------------------------------
 int Stream::open_file(const std::string_view &path) {
+  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
   assert(fd == -1);
 
   auto it = std::find(std::rbegin(path), std::rend(path), '/').base();
@@ -459,6 +487,7 @@ void Client::close() {
 
 namespace {
 int client_initial(ngtcp2_conn *conn, void *user_data) {
+  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
   auto c = static_cast<Client *>(user_data);
 
   if (c->recv_crypto_data(NGTCP2_CRYPTO_LEVEL_INITIAL, nullptr, 0) != 0) {
@@ -494,6 +523,7 @@ namespace {
 int recv_stream_data(ngtcp2_conn *conn, int64_t stream_id, int fin,
                      uint64_t offset, const uint8_t *data, size_t datalen,
                      void *user_data, void *stream_user_data) {
+  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
   if (!config.quiet && !config.no_quic_dump) {
     debug::print_stream_data(stream_id, data, datalen);
   }
@@ -532,6 +562,7 @@ int acked_stream_data_offset(ngtcp2_conn *conn, int64_t stream_id,
 
 namespace {
 int handshake_completed(ngtcp2_conn *conn, void *user_data) {
+  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
   auto c = static_cast<Client *>(user_data);
 
   if (!config.quiet) {
@@ -547,6 +578,7 @@ int handshake_completed(ngtcp2_conn *conn, void *user_data) {
 } // namespace
 
 int Client::handshake_completed() {
+  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
   if (!config.quiet) {
     // SSL_get_early_data_status works after handshake completes.
     if (early_data_ &&
@@ -600,15 +632,86 @@ int recv_retry(ngtcp2_conn *conn, const ngtcp2_pkt_hd *hd,
 }
 } // namespace
 
+// MINH 18.02.20 [implement ABR] ADD-S
+void Client::minh_req_rate(int m_bitrate, int m_seg_idx){
+  if (nstreams_done_ >= config.nstreams) {
+      std::cout << "\t nstreams_done_ > config.nstreams. RETURN"<<  std::endl;    
+    return;
+  }
+
+  int64_t stream_id;// = 2*nstreams_done_;  
+
+  if (auto rv = ngtcp2_conn_open_bidi_stream(conn_, &stream_id, nullptr); // assign stream_id value ???
+      rv != 0) {
+    std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
+    assert(NGTCP2_ERR_STREAM_ID_BLOCKED == rv);
+    return;
+  }
+  config.requests[0].path = "/minh_videos/BBB/1000ms/"+
+                            std::to_string(m_bitrate)+
+                            "/BigBuckBunny_1s"+
+                            std::to_string(m_seg_idx) + ".m4s";
+  auto stream = std::make_unique<Stream>(
+      config.requests[0], stream_id);
+
+  std::cout << "\n\t[MINH] Send a request for seg: " << m_seg_idx
+            << " with bitrate: " << m_bitrate
+            << " in stream_id: " << std::hex << stream_id << std::dec << std::endl;
+  std::cout << "\tRequests[0].path: " << config.requests[0].path << std::endl;
+
+  minh_req_sent = std::chrono::high_resolution_clock::now();
+  if (submit_http_request(stream.get()) != 0) {
+    std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__  << "Submit request ERROR " << std::endl;
+    return;
+  }
+
+  if (!config.download.empty()) {
+    stream->open_file(stream->req.path);
+  }
+  streams_.emplace(stream_id, std::move(stream));
+
+  ++nstreams_done_;
+}
+// MINH 18.02.20 [implement ABR] ADD-E
+
+// MINH 19.02.20 [parameter measurement] ADD-S
+
+// MINH 19.02.20 [parameter measurement] ADD-E
+// 
 namespace {
 int stream_close(ngtcp2_conn *conn, int64_t stream_id, uint64_t app_error_code,
                  void *user_data, void *stream_user_data) {
+  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
+  std::cout << "-------------------------------------------------------------------------" << '\n'
+            << "--------------------------- CLOSE STREAM " << stream_id << " -----------------------------" << '\n'
+            << "-------------------------------------------------------------------------" << std::endl;
   auto c = static_cast<Client *>(user_data);
 
-  if (c->on_stream_close(stream_id, app_error_code) != 0) {
+  if (c->on_stream_close(stream_id, app_error_code) != 0) { // Minh to check if there's any error in stream
     return NGTCP2_ERR_CALLBACK_FAILURE;
   }
+// MINH 18.02.20 [implement ABR] ADD-S
+  // 2. invoke para_measurement
+  minh_download_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::high_resolution_clock::now() - minh_req_sent).count();
+  minh_last_thrp = minh_seg_length*7.8125/minh_download_time;// 7.8125 = 8/1024*1000
 
+  std::cout << "\n\t[MINH] INFO: datalen: " << minh_seg_length*8/1024 << " Kbps" << std::endl;
+  std::cout << "\tdownload time: " << minh_download_time << "(ms)\t" 
+            << "throughput: " << minh_last_thrp << "Kbps" <<  std::endl;  
+  // 1. test-S
+  std::cout << "\tconfig.nstreams: " << config.nstreams << std::endl;;
+  if (minh_seg_idx <= 500){
+    ++config.nstreams;
+    minh_seg_idx ++;
+    c->minh_req_rate(minh_rate_set_1s[minh_seg_idx], minh_seg_idx);
+  }
+  // 1. test-E
+
+
+  // 3. invoke ABR
+
+// MINH 18.02.20 [implement ABR] ADD-E
   return 0;
 }
 } // namespace
@@ -617,6 +720,7 @@ namespace {
 int stream_reset(ngtcp2_conn *conn, int64_t stream_id, uint64_t final_size,
                  uint64_t app_error_code, void *user_data,
                  void *stream_user_data) {
+  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
   auto c = static_cast<Client *>(user_data);
 
   if (c->on_stream_reset(stream_id) != 0) {
@@ -784,10 +888,12 @@ int Client::init_ssl() {
   }
 
   if (util::numeric_host(addr_)) {
+    // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
     // If remote host is numeric address, just send "localhost" as SNI
     // for now.
     SSL_set_tlsext_host_name(ssl_, "localhost");
   } else {
+    // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
     SSL_set_tlsext_host_name(ssl_, addr_);
   }
 
@@ -851,6 +957,7 @@ void Client::write_qlog(const void *data, size_t datalen) {
 
 int Client::init(int fd, const Address &local_addr, const Address &remote_addr,
                  const char *addr, const char *port, uint32_t version) {
+  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
   local_addr_ = local_addr;
   remote_addr_ = remote_addr;
   fd_ = fd;
@@ -1047,6 +1154,7 @@ int Client::feed_data(const sockaddr *sa, socklen_t salen, uint8_t *data,
 }
 
 int Client::on_read() {
+  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
   std::array<uint8_t, 65536> buf;
   sockaddr_union su;
   socklen_t addrlen;
@@ -1153,6 +1261,7 @@ int Client::on_write() {
 }
 
 int Client::write_streams() {
+  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
   std::array<nghttp3_vec, 16> vec;
   PathStorage path;
   size_t pktcnt = 0;
@@ -1492,6 +1601,7 @@ void Client::update_remote_addr(const ngtcp2_addr *addr) {
 }
 
 int Client::send_packet() {
+  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
   if (debug::packet_lost(config.tx_loss_prob)) {
     if (!config.quiet) {
       std::cerr << "** Simulated outgoing packet loss **" << std::endl;
@@ -1589,6 +1699,7 @@ void Client::remove_tx_crypto_data(ngtcp2_crypto_level crypto_level,
 }
 
 int Client::on_stream_close(int64_t stream_id, uint64_t app_error_code) {
+  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
   if (httpconn_) {
     if (app_error_code == 0) {
       app_error_code = NGHTTP3_H3_NO_ERROR;
@@ -1648,7 +1759,7 @@ void Client::make_stream_early() {
 
   auto stream = std::make_unique<Stream>(
       config.requests[nstreams_done_ % config.requests.size()], stream_id);
-
+  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
   if (submit_http_request(stream.get()) != 0) {
     return;
   }
@@ -1662,13 +1773,15 @@ void Client::make_stream_early() {
 }
 
 int Client::on_extend_max_streams() {
+  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
   int64_t stream_id;
-
   if (ev_is_active(&delay_stream_timer_)) {
     return 0;
   }
 
+  // std::cout << "\n\t[MINH] INFO: config.nstreams: " << config.nstreams << std::endl;
   for (; nstreams_done_ < config.nstreams; ++nstreams_done_) {
+    // std::cout << "\n\t[MINH] INFO: nstreams_done_: " << nstreams_done_ << std::endl;
     if (auto rv = ngtcp2_conn_open_bidi_stream(conn_, &stream_id, nullptr);
         rv != 0) {
       assert(NGTCP2_ERR_STREAM_ID_BLOCKED == rv);
@@ -1677,12 +1790,15 @@ int Client::on_extend_max_streams() {
 
     auto stream = std::make_unique<Stream>(
         config.requests[nstreams_done_ % config.requests.size()], stream_id);
-
+    std::cout << "\tnstreams_done_: " << nstreams_done_ << '\n'
+              << "\tconfig.requests.size(): " << config.requests.size() << '\n'
+              << "\tstream_id: " << stream_id << std::endl;
     if (submit_http_request(stream.get()) != 0) {
       break;
     }
 
     if (!config.download.empty()) {
+      // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
       stream->open_file(stream->req.path);
     }
     streams_.emplace(stream_id, std::move(stream));
@@ -1703,6 +1819,7 @@ nghttp3_ssize read_data(nghttp3_conn *conn, int64_t stream_id, nghttp3_vec *vec,
 } // namespace
 
 int Client::submit_http_request(const Stream *stream) {
+  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
   std::string content_length_str;
 
   const auto &req = stream->req;
@@ -1741,6 +1858,7 @@ int Client::submit_http_request(const Stream *stream) {
 
 int Client::recv_stream_data(int64_t stream_id, int fin, const uint8_t *data,
                              size_t datalen) {
+  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
   auto nconsumed =
       nghttp3_conn_read_stream(httpconn_, stream_id, data, datalen, fin);
   if (nconsumed < 0) {
@@ -1847,6 +1965,7 @@ namespace {
 int http_recv_data(nghttp3_conn *conn, int64_t stream_id, const uint8_t *data,
                    size_t datalen, void *user_data, void *stream_user_data) {
   if (!config.quiet && !config.no_http_dump) {
+    // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
     debug::print_http_data(stream_id, data, datalen);
   }
   auto c = static_cast<Client *>(user_data);
@@ -1905,6 +2024,14 @@ int http_recv_header(nghttp3_conn *conn, int64_t stream_id, int32_t token,
                      nghttp3_rcbuf *name, nghttp3_rcbuf *value, uint8_t flags,
                      void *user_data, void *stream_user_data) {
   if (!config.quiet) {
+    // std::cout << "\n\t[MINH] INFO: value: " << value << " " << __FILE__ << ": " << __func__<< "(): " << __LINE__ << std::endl;
+
+  auto namebuf = nghttp3_rcbuf_get_buf(name); // namebuf.base == "content-length" ==> valuebuf.base = data-length
+  auto valuebuf = nghttp3_rcbuf_get_buf(value);
+  if (strncmp((char*)namebuf.base, "content-length", 14)== 0){
+    minh_seg_length = std::atoi((char*)valuebuf.base);
+    std::cout << "\t[MINH] CLIENT CONTENT-LENGTH: " << valuebuf.base << std::endl;
+  }
     debug::print_http_header(stream_id, name, value, flags);
   }
   return 0;
@@ -2033,6 +2160,7 @@ namespace {
 int http_stream_close(nghttp3_conn *conn, int64_t stream_id,
                       uint64_t app_error_code, void *conn_user_data,
                       void *stream_user_data) {
+  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
   auto c = static_cast<Client *>(conn_user_data);
   if (c->http_stream_close(stream_id, app_error_code) != 0) {
     return NGHTTP3_ERR_CALLBACK_FAILURE;
@@ -2042,6 +2170,7 @@ int http_stream_close(nghttp3_conn *conn, int64_t stream_id,
 } // namespace
 
 int Client::http_stream_close(int64_t stream_id, uint64_t app_error_code) {
+  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
   if (config.exit_on_first_stream_close) {
     should_exit_ = true;
   }
@@ -2268,6 +2397,7 @@ SSL_CTX *create_ssl_ctx(const char *private_key_file, const char *cert_file) {
 
 namespace {
 int run(Client &c, const char *addr, const char *port) {
+  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
   Address remote_addr, local_addr;
 
   auto fd = create_sock(remote_addr, addr, port);
@@ -2305,14 +2435,19 @@ std::string_view get_string(const char *uri, const http_parser_url &u,
 
 namespace {
 int parse_uri(Request &req, const char *uri) {
+  std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
+  std::cout << "\n\t[MINH] Request: " << &req << '\t'
+            << "\t *uri: " << *uri << " uri: " << &uri << std::endl;
   http_parser_url u;
 
   http_parser_url_init(&u);
   if (http_parser_parse_url(uri, strlen(uri), /* is_connect = */ 0, &u) != 0) {
+  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
     return -1;
   }
 
   if (!(u.field_set & (1 << UF_SCHEMA)) || !(u.field_set & (1 << UF_HOST))) {
+    // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
     return -1;
   }
 
@@ -2344,6 +2479,7 @@ int parse_uri(Request &req, const char *uri) {
 
 namespace {
 int parse_requests(char **argv, size_t argvlen) {
+  std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
   for (size_t i = 0; i < argvlen; ++i) {
     auto uri = argv[i];
     Request req;
@@ -2532,6 +2668,15 @@ Options:
 } // namespace
 
 int main(int argc, char **argv) {
+  // MINH ADD-S
+  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
+  // std::cout << "\targc: " << argc << '\n'
+  //           << " \tsize of argv: " << sizeof(argv) << std::endl;
+
+  // for (int i = 0; i < sizeof(argv); i ++){
+  //   std::cout << "\tMINH argv[" << i << "]: " << argv[i] << std::endl;
+  // }
+  // MINH ADD-E            
   config_set_default(config);
   char *data_path = nullptr;
   const char *private_key_file = nullptr;
@@ -2782,6 +2927,11 @@ int main(int argc, char **argv) {
     };
   }
 
+  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
+  std::cout << "\targc: " << argc << " optind: " << optind << std::endl;
+  // MINH 18.02.20 [run dummynet to control network] ADD-S
+
+  // MINH 18.02.20 [run dummynet to control network] ADD-S
   if (argc - optind < 2) {
     std::cerr << "Too few arguments" << std::endl;
     print_usage();
@@ -2791,6 +2941,7 @@ int main(int argc, char **argv) {
   if (data_path) {
     auto fd = open(data_path, O_RDONLY);
     if (fd == -1) {
+      // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
       std::cerr << "data: Could not open file " << data_path << ": "
                 << strerror(errno) << std::endl;
       exit(EXIT_FAILURE);
@@ -2814,6 +2965,9 @@ int main(int argc, char **argv) {
 
   auto addr = argv[optind++];
   auto port = argv[optind++];
+
+  std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
+  std::cout << "\taddr: " << addr << " port: " << port << std::endl;
 
   if (parse_requests(&argv[optind], argc - optind) != 0) {
     exit(EXIT_FAILURE);
@@ -2841,8 +2995,10 @@ int main(int argc, char **argv) {
     std::cerr << "Unable to generate static secret" << std::endl;
     exit(EXIT_FAILURE);
   }
-
+    // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
+    std::cout << "\taddr: " << addr << std::endl;
   Client c(EV_DEFAULT, ssl_ctx);
+    // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
 
   if (run(c, addr, port) != 0) {
     exit(EXIT_FAILURE);

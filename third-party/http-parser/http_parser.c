@@ -21,6 +21,9 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
+// MINH -S
+#include <stdio.h>
+// MINH -S
 #include "http_parser.h"
 #include <assert.h>
 #include <stddef.h>
@@ -486,12 +489,16 @@ int http_message_needs_eof(const http_parser *parser);
 static enum state
 parse_url_char(enum state s, const char ch)
 {
+  // printf("[MINH] info: %s:%d\n", __FILE__, __LINE__);
+  // printf("[MINH] info: s = %d, ch = %c\n", s, ch);
   if (ch == ' ' || ch == '\r' || ch == '\n') {
+    // printf("[MINH] info: %s:%d\n", __FILE__, __LINE__);
     return s_dead;
   }
 
 #if HTTP_PARSER_STRICT
   if (ch == '\t' || ch == '\f') {
+    // printf("[MINH] info: %s:%d\n", __FILE__, __LINE__);
     return s_dead;
   }
 #endif
@@ -539,6 +546,7 @@ parse_url_char(enum state s, const char ch)
 
     case s_req_server_with_at:
       if (ch == '@') {
+        // printf("[MINH] INFO: %s:%d\n", __FILE__, __LINE__);
         return s_dead;
       }
 
@@ -628,6 +636,7 @@ parse_url_char(enum state s, const char ch)
   }
 
   /* We should never fall out of the switch above unless there's an error */
+  // printf("[MINH] info: %s:%d\n", __FILE__, __LINE__);
   return s_dead;
 }
 
@@ -2299,14 +2308,19 @@ http_parser_parse_url(const char *buf, size_t buflen, int is_connect,
 
   u->port = u->field_set = 0;
   s = is_connect ? s_req_server_start : s_req_spaces_before_url;
+  // printf("[MINH] info: %s:%d\n", __FILE__, __LINE__);
+  // printf("[MINH] info: s = %d\n", s);
   old_uf = UF_MAX;
 
   for (p = buf; p < buf + buflen; p++) {
+    // printf("[MINH] info: p = %s\n", p);
+
     s = parse_url_char(s, *p);
 
     /* Figure out the next field that we're operating on */
     switch (s) {
       case s_dead:
+        // printf("[MINH] info: %s:%d\n", __FILE__, __LINE__);
         return 1;
 
       /* Skip delimeters */
@@ -2322,6 +2336,7 @@ http_parser_parse_url(const char *buf, size_t buflen, int is_connect,
         break;
 
       case s_req_server_with_at:
+        // printf("[MINH] info: %s:%d\n", __FILE__, __LINE__);
         found_at = 1;
 
       /* FALLTHROUGH */
@@ -2343,6 +2358,7 @@ http_parser_parse_url(const char *buf, size_t buflen, int is_connect,
 
       default:
         assert(!"Unexpected state");
+        // printf("[MINH] info: %s:%d\n", __FILE__, __LINE__);
         return 1;
     }
 
@@ -2363,17 +2379,20 @@ http_parser_parse_url(const char *buf, size_t buflen, int is_connect,
   /* parsing http:///toto will fail */
   if ((u->field_set & (1 << UF_SCHEMA)) &&
       (u->field_set & (1 << UF_HOST)) == 0) {
+    // printf("[MINH] info: %s:%d\n", __FILE__, __LINE__);
     return 1;
   }
 
   if (u->field_set & (1 << UF_HOST)) {
     if (http_parse_host(buf, u, found_at) != 0) {
+      // printf("[MINH] info: %s:%d\n", __FILE__, __LINE__);
       return 1;
     }
   }
 
   /* CONNECT requests can only contain "hostname:port" */
   if (is_connect && u->field_set != ((1 << UF_HOST)|(1 << UF_PORT))) {
+    // printf("[MINH] info: %s:%d\n", __FILE__, __LINE__);
     return 1;
   }
 
@@ -2383,6 +2402,7 @@ http_parser_parse_url(const char *buf, size_t buflen, int is_connect,
 
     /* Ports have a max value of 2^16 */
     if (v > 0xffff) {
+      // printf("[MINH] info: %s:%d\n", __FILE__, __LINE__);
       return 1;
     }
 

@@ -30,6 +30,10 @@
 
 #include "util.h"
 
+// MINH 20.02.20 [parameters] ADD-S
+// #include "client.h"
+// MINH 20.02.20 [parameters] ADD-E
+
 namespace ngtcp2 {
 
 namespace debug {
@@ -70,12 +74,20 @@ void print_crypto_data(ngtcp2_crypto_level crypto_level, const uint8_t *data,
   }
   fprintf(outfile, "Ordered CRYPTO data in %s crypto level\n",
           crypto_level_str);
+  // MINH DEL-S
+  #if 0  
   util::hexdump(outfile, data, datalen);
+  #endif
+  // MINH DEL-E  
 }
 
 void print_stream_data(int64_t stream_id, const uint8_t *data, size_t datalen) {
   fprintf(outfile, "Ordered STREAM data stream_id=0x%" PRIx64 "\n", stream_id);
+  // MINH DEL-S
+  #if 0  
   util::hexdump(outfile, data, datalen);
+  #endif
+  // MINH DEL-E  
 }
 
 void print_initial_secret(const uint8_t *data, size_t len) {
@@ -215,8 +227,16 @@ void print_header(const uint8_t *name, size_t namelen, const uint8_t *value,
 namespace {
 void print_header(const nghttp3_rcbuf *name, const nghttp3_rcbuf *value,
                   uint8_t flags) {
-  auto namebuf = nghttp3_rcbuf_get_buf(name);
+  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << __LINE__ << std::endl;
+  auto namebuf = nghttp3_rcbuf_get_buf(name); // minh: namebuf.base == "content-length" ==> valuebuf.base = data-length
   auto valuebuf = nghttp3_rcbuf_get_buf(value);
+
+  // MINH 20.02.20 [get content-length] ADD-S
+  // if (strncmp((char*)namebuf.base, "content-length", 14)== 0){
+  //   std::cout << "\t[MINH] CONTENT-LENGTH: " << valuebuf.base << std::endl;
+  // }
+
+  // MINH 20.02.20 [get content-length] ADD-E
   print_header(namebuf.base, namebuf.len, valuebuf.base, valuebuf.len, flags);
 }
 } // namespace
@@ -229,6 +249,7 @@ void print_header(const nghttp3_nv &nv) {
 
 void print_http_header(int64_t stream_id, const nghttp3_rcbuf *name,
                        const nghttp3_rcbuf *value, uint8_t flags) {
+  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << __LINE__ << std::endl;
   fprintf(outfile, "http: stream 0x%" PRIx64 " ", stream_id);
   print_header(name, value, flags);
 }
@@ -240,7 +261,11 @@ void print_http_end_headers(int64_t stream_id) {
 void print_http_data(int64_t stream_id, const uint8_t *data, size_t datalen) {
   fprintf(outfile, "http: stream 0x%" PRIx64 " body %zu bytes\n", stream_id,
           datalen);
+  // MINH DEL-S
+  #if 0  
   util::hexdump(outfile, data, datalen);
+  #endif
+  // MINH DEL-E  
 }
 
 void print_http_begin_trailers(int64_t stream_id) {
