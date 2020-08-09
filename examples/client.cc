@@ -81,6 +81,15 @@ Stream::~Stream() {
 // BBB video, SD = 1s
 std::vector<int> minh_rate_set_1s = {47, 92, 135, 182, 226, 270, 353, 425, 538, 621, 808, 1100, 1300, 1700, 2200, 2600, 3300, 3800, 4200, 4700}; // BBB video, SD = 1s
 
+// BBB video, SD = 2s
+std::vector<int> minh_rate_set_2s = {46, 89, 131, 178, 222, 263, 334, 396, 522, 595, 791, 1000, 1200, 1500, 2100, 2500, 3100, 3500, 3800, 4200}; // BBB video, SD = 2s
+
+// BBB video, SD = 4s
+std::vector<int> minh_rate_set_4s = {45, 89, 129, 177, 218, 256, 323, 378, 509, 578, 783, 1000, 1200, 1500, 2100, 2400, 2900, 3300, 3600, 3900}; //BBB video, SD = 4s
+
+// BBB video, SD = 6s
+std::vector<int> minh_rate_set_6s = {46, 89, 128, 177, 218, 255, 321, 374, 506, 573, 780, 1000, 1200, 1500, 2100, 2400, 2900, 3300, 3600, 3900}; // BBB video, SD = 6s
+
 int minh_seg_idx = 1;
 
 // Minh: for clocks
@@ -89,7 +98,7 @@ int  minh_download_time = 0;
 
 // Minh: for parameters
 const int minh_sd = 1000; //ms
-const int minh_MAX_SEGMENT = 596000/minh_sd + 1;
+const int minh_MAX_SEGMENT = 25;//596000/minh_sd + 1;
 
 double  minh_last_thrp = 0;
 double  minh_buffer = 0;
@@ -523,7 +532,6 @@ namespace {
 int recv_stream_data(ngtcp2_conn *conn, int64_t stream_id, int fin,
                      uint64_t offset, const uint8_t *data, size_t datalen,
                      void *user_data, void *stream_user_data) {
-  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
   if (!config.quiet && !config.no_quic_dump) {
     debug::print_stream_data(stream_id, data, datalen);
   }
@@ -562,7 +570,6 @@ int acked_stream_data_offset(ngtcp2_conn *conn, int64_t stream_id,
 
 namespace {
 int handshake_completed(ngtcp2_conn *conn, void *user_data) {
-  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
   auto c = static_cast<Client *>(user_data);
 
   if (!config.quiet) {
@@ -578,7 +585,6 @@ int handshake_completed(ngtcp2_conn *conn, void *user_data) {
 } // namespace
 
 int Client::handshake_completed() {
-  // std::cout << "\n\t[MINH] INFO: " << __FILE__ << ": " << __func__<< "(): " << std::dec << __LINE__ << std::endl;
   if (!config.quiet) {
     // SSL_get_early_data_status works after handshake completes.
     if (early_data_ &&
@@ -701,10 +707,10 @@ int stream_close(ngtcp2_conn *conn, int64_t stream_id, uint64_t app_error_code,
             << "throughput: " << minh_last_thrp << "Kbps" <<  std::endl;  
   // 1. test-S
   std::cout << "\tconfig.nstreams: " << config.nstreams << std::endl;;
-  if (minh_seg_idx <= 500){
+  if (minh_seg_idx <= minh_MAX_SEGMENT){
     ++config.nstreams;
     minh_seg_idx ++;
-    c->minh_req_rate(minh_rate_set_1s[minh_seg_idx], minh_seg_idx);
+    c->minh_req_rate(4700, minh_seg_idx);
   }
   // 1. test-E
 

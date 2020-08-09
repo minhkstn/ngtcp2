@@ -6974,9 +6974,12 @@ int ngtcp2_conn_read_pkt(ngtcp2_conn *conn, const ngtcp2_path *path,
   conn->log.last_ts = ts;
   conn->qlog.last_ts = ts;
 
+// MINH 20.04.02 [screen log] DEL-S
+#if 0
   ngtcp2_log_info(&conn->log, NGTCP2_LOG_EVENT_CON, "recv packet len=%zu",
                   pktlen);
-
+#endif
+// MINH 20.04.02 [screen log] DEL-S
   if (pktlen == 0) {
     return NGTCP2_ERR_INVALID_ARGUMENT;
   }
